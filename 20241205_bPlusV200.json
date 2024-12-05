@@ -1,0 +1,801 @@
+[
+    {
+        "id": "19a3dcc1fb0df1c7",
+        "type": "tab",
+        "label": "ButtonPlus",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "ee51a42a04ef8f1a",
+        "type": "http request",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "Post JSON",
+        "method": "POST",
+        "ret": "txt",
+        "paytoqs": "body",
+        "url": "",
+        "tls": "",
+        "persist": true,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 1330,
+        "y": 80,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "fc51821d803ab0f1",
+        "type": "function",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "Set Initial ConfigV2",
+        "func": "// In this node you specify the basic information for one\n// particular button+ in your environment.\n// Put this function between an inject and an MQTT Publish\n// And only run it ONCE. Except if you replace a ButtonPlus\n// or the unit is reset to the factory settings.\n// <Inject> --- <bPlusInitConfig> --- <MQTT Punblish>\n// The configuration is sent to the button+ device and\n// saved to the retained storage on disk.\n// Make sure you enabled file based retension for your broker\n// (See the wiki on https://github.com/balk77/node-red-buttonplus-menu/wiki)\n// V0.80, 20240201 Rene Boeije Initial release  parts based on code of balk77\n// V0.90, 20240301 Rene Boeije Adapted for 'simplified' version of original flow by S. Balkenende (Balk77)\n//                      Sets default topics for buttons(In progress)\n// V1.00, 20241109 René Boeije Adapted for new approach and default topics in F/W 1.14\n// V1.10, 20241127 René Boeije Adapted for V2.0 naming, removed UID's that were introduced in 1.14\n// \n// V1.20  20241205 René Boeije Clean up, restructure and removal of legacy stuff\n\n// The name of your device. Can be the room where it is placed\n// No spaces or special characters, case sensitive\n// In the web interface (F/W V1.14+) it is refered to as 'uid'.\nlet bplusdevice = \"woonkamer\"\n// The IP-address of your button+. It is displayed on the display unless\n// you (or other function) disabled it. If not visible, press the left\n// button next to the USB-connector at the bottom of your button+. A \n// popup will show IP-Address, firmware version and internal temperature.\nlet ipaddress = \"192.168.0.235\"\n// The base topic of all Button+ related MQTT. Only change if you have \n// a good reason and know the impact.\nlet basetopic = \"buttonplus/\" // first level of the mqtt topic\n// The location of the device. Can be the floor or room number.\n// Is free text for display purposes\nlet location = \"BG\"\n// Auto backup determines if the setup is saved on the buttonPlus server.\n// True: It is saved on every change\n// False: It is not saved, so if you reset the unit to factory settings\n// the config is lost.\n// NOTE: Not sure if this is in operation.\nlet autobackup = false // keep at true if you want to make a backup at the ButtonPlus server\n// By default, the IP-address and Wifi status is displayed in the lower\n// left corner. This will overwrite the label and text of button 0, which is \n// not desirable.\n// Set it to 0 to disable this function, to 1 to put it on top\n// or 2 to show it at the lower left bottom. \nlet statusbar = 0\n\n// Number of bars below the ButtonPlus display (1-3)\n// there is only one buttonbar below the main screen\n// If 3, the main display is at the top position.\n// (Theoretically you can also place the buttonbar above the main display, but\n// that option is not formally supported.)\nlet numbars = 3\n// The name of the MQTT-broker the button+ connects to. This Node-Red flow \n// currently only supports one MQTT-broker. The ID is a name.\n// No spaces and/or special characters.\n// (If you need more than one broker, you have to add it hardcoded in the\n// broker array below the 'nothing to be changed below this line' message.)\nlet mqttBrokerId = \"xxxxxxx\";\n// The IP-address of your MQTT-broker. (Maybe domain name is allowed, not tested)\nlet mqtturl = \"mqtt://192.168.0.yy\"\n// The MQTT-port the broker listens to, normally 1883\nlet mqttport = 1883\n// The Websocket-port the broker listens to, normally 9001\n// Set to 0 if not used\nlet mqttwsport = 0\n// MQTT broker credentials\nlet mqttusername = \"xxxxxx\"\nlet mqttpassword = \"xxxxxxx\"\n\n// Add pages, should start with \"All\", or page 0 that is a virtual page that\n// contains items visible on all pages \n// when more pages are added you should change some switch blocks as well\n// in the node red-flow\nlet pages = [\"All\", \"main\", \"licht\", \"Verdieping\", \"Media\", \"Weer\"];\n// Display Items for main\n// 0: CurrentDate\n// 1: Current Date\n// 2: Outside temperature\n// 3: Ambient temperature\n// 4: Target temp\n// 5: Previous Page\n// 6: Current Page\n// 7: Next Page\n// 8: copy of 3 for other room\n// 9: copy of 4 for other room\nlet displayitempage = [\n    {\n        \"displayitem\": 0, \"page\": 1, \"label\": \"Datum\", \"x\": 67, \"y\": 35, \"align\": 1, \"fontsize\": 2, \"width\": 40, \"value\": \"y\", \"unit\": \"\", \"round\": 0,\n        \"topics\": [{ \"brokerid\": mqttBrokerId, \"eventtype\": 15, \"payload\": \"\", \"topic\": \"curDate\" }]\n    },\n    {\n        \"displayitem\": 1, \"page\": 0, \"label\": \"Tijd\", \"x\": 60, \"y\": 0, \"align\": 1, \"fontsize\": 4, \"width\": 40, \"value\": \"y\", \"unit\": \"\", \"round\": 0,\n        \"topics\": [{ \"brokerid\": mqttBrokerId, \"eventtype\": 15, \"payload\": \"\", \"topic\": \"curTime\" }]\n    },\n    {\n        \"displayitem\": 2, \"page\": 0, \"label\": \"Buiten\", \"x\": 0, \"y\": 36, \"align\": 1, \"fontsize\": 3, \"width\": 30, \"value\": \"x\", \"unit\": \"°C\", \"round\": 1,\n        \"topics\": [{ \"brokerid\": \"server_33\", \"eventtype\": 15, \"payload\": \"\", \"topic\": \"dak/sht10_temp/act\" },\n        { \"brokerid\": mqttBrokerId, \"eventtype\": 16, \"payload\": \"\"/*, \"topic\": \"buttonplus/werkkamer/display/main/1/label\"*/ }]\n    },\n    {\n        \"displayitem\": 3, \"page\": 1, \"label\": \"woonk\", \"x\": 0, \"y\": 0, \"align\": 1, \"fontsize\": 4, \"width\": 33, \"value\": \"y\", \"unit\": \"°C\", \"round\": 1,\n        \"topics\": [{ \"brokerid\": \"server_33\", \"eventtype\": 15, \"payload\": \"\", \"topic\": \"woonkamer/actTemp\" }]\n    },\n    {\n        \"displayitem\": 4, \"page\": 1, \"label\": \"TgtTemp\", \"x\": 33, \"y\": 36, \"align\": 0, \"fontsize\": 3, \"width\": 30, \"value\": \"x\", \"unit\": \"°C\", \"round\": 1,\n        \"topics\": [{ \"brokerid\": mqttBrokerId, \"eventtype\": 15, \"payload\": \"\"/*, \"topic\": initTopic + '/display/tgtTemp'*/ }]\n    },\n    {\n        \"displayitem\": 5, \"page\": 0, \"label\": \"<   Page\", \"x\": 0, \"y\": 80, \"align\": 0, \"fontsize\": 2, \"width\": 33, \"value\": pages[pages.length], \"unit\": \"\", \"round\": 0,\n        \"topics\": [{ \"brokerid\": mqttBrokerId, \"eventtype\": 15, \"payload\": \"\"/*, \"topic\": initTopic + \"/display/prevPage\"*/ }]\n    },\n    {\n        \"displayitem\": 6, \"page\": 0, \"label\": \" \", \"x\": 33, \"y\": 72, \"align\": 0, \"fontsize\": 3, \"width\": 34, \"value\": pages[1], \"unit\": \"\", \"round\": 0,\n        \"topics\": [{ \"brokerid\": mqttBrokerId, \"eventtype\": 15, \"payload\": \"\"/*, \"topic\": initTopic + \"/display/page\"*/ }]\n    },\n    {\n        \"displayitem\": 7, \"page\": 0, \"label\": \"Page   >\", \"x\": 67, \"y\": 80, \"align\": 0, \"fontsize\": 2, \"width\": 33, \"value\": pages[2], \"unit\": \"\", \"round\": 0,\n        \"topics\": [{ \"brokerid\": mqttBrokerId, \"eventtype\": 15, \"payload\": \"\"/*, \"topic\": initTopic + \"/display/nextPage\"*/ }]\n    },\n    {\n        \"displayitem\": 8, \"page\": 3, \"label\": \"werkk\", \"x\": 0, \"y\": 0, \"align\": 1, \"fontsize\": 4, \"width\": 33, \"value\": \"y\", \"unit\": \"°C\", \"round\": 1,\n        \"topics\": [{ \"brokerid\": \"server_33\", \"eventtype\": 15, \"payload\": \"\", \"topic\": \"werkkamer/actTemp\" }]\n    },\n    {\n        \"displayitem\": 9, \"page\": 3, \"label\": \"TgtTemp\", \"x\": 33, \"y\": 36, \"align\": 0, \"fontsize\": 3, \"width\": 33, \"value\": \"y\", \"unit\": \"°C\", \"round\": 1,\n        \"topics\": [{ \"brokerid\": \"server_33\", \"eventtype\": 15, \"payload\": \"\", \"topic\": \"werkkamer/tgtTemp\" }]\n    },\n]\n\n// Buttons 1 and 2 have a fixed function to browse through the menus (pages)\n// The buttons 3-8 have different texts, depending on the selected (active) page\n// Toplabel is the colored text above the label. At this moment the colors are\n// selectable for the toplabel (The same for all top labels) outside this flow\n// The main labels are always white. (There is a change request to make this configurable)\n// The index is the page nr -1. Page 0 is displayed on all pages. \n// (Buttons 1 & 2 are on page 0, as they are for page flip, For that reason, \n// buttons 1 & 2 are not defined here.)\nlet buttonLabels =\n    [\n        [ // Main\n            { \"topLabel\": \"T woonk\", \"label\": \"-0.1°C\" }, { \"topLabel\": \"T woonk\", \"label\": \"+0.1°C\" },\n            { \"topLabel\": \"Mode\", \"label\": \"Wait\" }, { \"topLabel\": \"Licht Woonk\", \"label\": \"Onbekend\" },\n            { \"topLabel\": \"Licht Tafel\", \"label\": \"Onbekend\" }, { \"topLabel\": \"Licht keuken\", \"label\": \"Onbekend\" }\n        ],\n        [ // Licht\n            { \"topLabel\": \"Dim Tafel\", \"label\": \"100%\" }, { \"topLabel\": \"Dim Keuken1\", \"label\": \"100%\" },\n            { \"topLabel\": \"Dim keuken2\", \"label\": \"100%\" }, { \"topLabel\": \"Dim Keuken2\", \"label\": \"100%\" },\n            { \"topLabel\": \"Kast\", \"label\": \"Uit\" }, { \"topLabel\": \"Bank\", \"label\": \"Uit\" }\n        ],\n        [ // Verdieping\n            { \"topLabel\": \"T werkk\", \"label\": \"-0.1°C\" }, { \"topLabel\": \"T werkk\", \"label\": \"+0.1°C\" },\n            { \"topLabel\": \"Mode\", \"label\": \"Wait\" }, { \"topLabel\": \"\", \"label\": \"\" },\n            { \"topLabel\": \"\", \"label\": \"\" }, { \"topLabel\": \"\", \"label\": \"\" }\n        ],\n        [ // Media\n            { \"topLabel\": \"TV aan/uit\", \"label\": \"Uit\" }, { \"topLabel\": \"Audio aan/uit\", \"label\": \"Uit\" },\n            { \"topLabel\": \"Radio\", \"label\": \"Uit\" }, { \"topLabel\": \"Stream\", \"label\": \"Uit\" },\n            { \"topLabel\": \"Track\", \"label\": \"Volgende\" }, { \"topLabel\": \"\", \"label\": \"Vorige\" }\n        ],\n        [ // Weather (Display only, Buttons like Main)\n            { \"topLabel\": \"T woonk\", \"label\": \"-0.1°C\" }, { \"topLabel\": \"T woonk\", \"label\": \"+0.1°C\" },\n            { \"topLabel\": \"Mode\", \"label\": \"Wait\" }, { \"topLabel\": \"Licht Woonk\", \"label\": \"Onbekend\" },\n            { \"topLabel\": \"Licht Tafel\", \"label\": \"Onbekend\" }, { \"topLabel\": \"Licht keuken\", \"label\": \"Onbekend\" }\n        ]\n    ]\n\nglobal.set('buttonlabels', buttonLabels)\n// nothing to be changed below this line (Except if you know what you are doing like adding brokers)\n// -------------------------------------------------------------------------------------------------\n\n\n// Assemble the base topics\n// example default topics:\n// buttonplus/btn_88eea1/button/but1_0/frontled/on/set\n// buttonplus/btn_88eea1/button/but1_0/label/set\n// buttonplus/btn_88eea1/button/but1_0/toplabel/set\n/// ToDo: make end slash consistent across all constants\nlet initTopic = basetopic + bplusdevice\nlet buttontopic = basetopic + bplusdevice + \"/button\"\nlet buttonsubscriptiontopic = buttontopic + \"/#\"\nlet displaytopic = basetopic + bplusdevice + \"/display/\"\nlet pagetopic = basetopic + bplusdevice + \"/page\"\nlet buttonpagetopic = basetopic + bplusdevice + \"/buttonpage\"\nlet brightnesstopic = basetopic + bplusdevice + \"/brightness\"\nlet updatetopic = basetopic + bplusdevice + \"/update\"\n// assemble to configuration object\nvar bplusconfig = {};\nbplusconfig[bplusdevice] = {\n    'ip': ipaddress,\n    'deviceid': bplusdevice, // Redundant or the chicken and egg question\n    'basetopic': basetopic,\n    \"initTopic\": initTopic,\n    'buttontopic': buttontopic,\n    'buttonsubscriptiontopic': buttonsubscriptiontopic,\n    'displaytopic': displaytopic,\n    'pagetopic': pagetopic,\n    'buttonpagetopic': buttonpagetopic,\n    'brightnesstopic': brightnesstopic,\n    'updatetopic': updatetopic,\n    'numbars': numbars,\n    'location': location,\n    'autobackup': autobackup,\n    'statusbar': statusbar,\n    'pages': pages,\n    'mqttbrokers': [ // Currently only 1 broker suported, but you can add more hardcoded\n        {\n            'brokerid': mqttBrokerId,\n            'url': mqtturl,\n            'port': mqttport,\n            'wsport': mqttwsport,\n            'username': mqttusername,\n            'password': mqttpassword,\n            'defaultschema': true,          // Use default topic naming\n            'hassdiscovery': false          // If you plan to use Home Assistant\n        }\n    ],\n    'configJSONcore': {\n        \"uid\": bplusdevice,\n        \"location\": location,\n        \"autobackup\": autobackup,\n        //\"brightnesslargedisplay\": 100,\n        //\"brightnessminidisplay\": 100,\n        \"brightness\": 100,\n        //\"ledcolorfront\": 0,\n        //\"ledcolorwall\": 0,\n        \"color\": 0,\n        \"statusbar\": statusbar\n    }\n}\n\n// save the config for all devices back to the disk\nglobal.set(\"bplusconfig\", bplusconfig, \"file\")\n// Not so sure about performance impact, but we do not always want to load the whole bplusconfig\nglobal.set(\"pages\", pages)               // part of bplusconfig, so no need to put on disk\nglobal.set(\"bplusdevice\", bplusdevice)   // part of bplusconfig, so no need to put on disk\nglobal.set(\"initTopic\", initTopic)       // part of bplusconfig, so no need to put on disk\nglobal.set(\"buttontopic\", buttontopic)   // part of bplusconfig, so no need to put on disk\nglobal.set(\"displaytopic\", displaytopic) // part of bplusconfig, so no need to put on disk\n\n// Prepare the json to be sent to the b+\nvar configJSON = {}\nconfigJSON['core'] = bplusconfig[bplusdevice].configJSONcore\nconfigJSON['brokers'] = bplusconfig[bplusdevice].mqttbrokers\nconfigJSON['displayitems'] = displayitempage\n\n// Make the sensor publish its value\nvar tempSensor = [\n    {\n        \"sensorid\": 1,\n        \"interval\": 10,\n        \"topics\": [\n            {\n                \"brokerid\": mqttBrokerId,\n                \"topic\": \"woonkamer/actTemp\",\n                \"payload\": \"\",\n                \"eventtype\": 18\n            }\n        ]\n    }\n]\nconfigJSON['sensors'] = tempSensor\n// Configure the topics the buttons subscribe to.\n// We only use a limited nr of topics:\n// Click, longpress, label, toplabel and LedRGB\n// If you want other topics, you have to edit the code below.\nvar btns = []\nvar n = 0 // index in array of buttons\nlet firstBtnNr = (9 - 2 * numbars)\nlet lastBtnNr = firstBtnNr + numbars * 2 - 1\nnode.warn('first = ' + firstBtnNr + '; lastBtnNr = ' + lastBtnNr)\n\nfor (var p = 0; p < buttonLabels.length; p++) {\n    for (var b = 0; b < 2 * numbars; b++) {\n        // The if is now obsolete, as buttons 1 and 2 are by default page flippers\n        //if ((p == 0 && b<3) || (p != 0 && b > 2)) {  // Only p0 has button 1 & 2\n        node.warn('p = ' + p + '; b = ' + (b) + '; btn[p][b].label = ' + buttonLabels[p][b].label)\n        var btn =\n        {\n            \"buttonid\": firstBtnNr + b - 1, // first btn starts at 1, but id at 0...\n            \"position\": firstBtnNr + b,\n            \"page\": p + 1,\n            \"label\": buttonLabels[p][b][\"label\"],\n            \"toplabel\": buttonLabels[p][b][\"topLabel\"],\n            //\"ledcolorfront\": 0, // pre v2.0\n            //\"ledcolorwall\": 0,  // pre v2.0\n            \"longdelay\": 50,\n            \"longrepeat\": 0,\n            \"leds\": [\n                {\n                    \"wall\": false,\n                    \"onrgb\": 0,\n                },\n                {\n                    \"wall\": true,\n                    \"onrgb\": 0,\n                }\n            ]\n        }\n        btns[n++] = btn\n        node.warn('Einde p = ' + p + '; b = ' + (b) + '; btn[p][b].label = ' + buttonLabels[p][b].label)\n        //} // Obsolete 'if'\n    }\n}\n//})\nconfigJSON['buttons'] = btns\nmsg.payload = configJSON;\nmsg.url = 'http://' + ipaddress + '/configsave'\n\nmsg.headers = {}\nmsg.headers[\"Accept\"] = 'application/json'\nmsg.headers[\"Accept-Encoding\"] = 'gzip, deflate, br'\nmsg.headers[\"json\"] = true\nreturn msg\n",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 830,
+        "y": 80,
+        "wires": [
+            [
+                "ee51a42a04ef8f1a"
+            ]
+        ]
+    },
+    {
+        "id": "a340cff02ce7c939",
+        "type": "inject",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 120,
+        "y": 80,
+        "wires": [
+            [
+                "fc51821d803ab0f1"
+            ]
+        ]
+    },
+    {
+        "id": "39230e10f35a856b",
+        "type": "mqtt in",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "",
+        "topic": "buttonplus/woonkamer/button/#",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "c55f79c3962bc8ce",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 170,
+        "y": 500,
+        "wires": [
+            [
+                "8c8fb6a7b0387ef2"
+            ]
+        ]
+    },
+    {
+        "id": "8c8fb6a7b0387ef2",
+        "type": "function",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "filterClick",
+        "func": "// V1.0 20241203 René Boeije Created based on click eventhandler of pre-2.0 versions\n//                           Page flipping doe no longer generate click events, so \n//                           this code now sends the button clicks only to the right handler\n//var curMode     = global.get('curHeatingMode') || 'Force_OFF'\n//let bplusdevice = global.get('bplusdevice')\n//let pagenames   = global.get('buttonpages')\n//let numpages    = pagenames.length\n//let initTopic   = global.get('initTopic')\nvar curPage = global.get('curPageIndex')\n\nvar topic = msg.topic.split('/')\n//node.warn('==> button event, topic: ' + msg.topic + '; Payload: ' + msg.payload + ' Event type: ' + msg.payload[\"event_type\"] + '<==')\nvar action = msg.payload[\"event_type\"]\nif (action != \"click\" && action != \"longpress\") { // Ignore if not a press. \n    //node.warn(\"not click but: \" + msg.payload)\n    return null\n}\n\n//node.warn(\"Topic: \"+ msg.topic + ', payload: ' + msg.payload)\n// temp extensive code here to parse and see what comes in and how to define actions\n// buttonplus/werkkamer/main/btn/7/press\n//var btnNumber = Number(topic[topic.length-2])\n// buttonplus/develop/button/3-1/pushbutton\nvar topic = msg.topic.split('/') // should be 5 items\nnode.warn(\"topic[0] = \" + topic[0] + \"; topic[1] = \" + topic[1] + \"; topic[2] = \" + topic[2] + \"; topic[3] = \" + topic[3])\nif (topic[3].charAt(1) != '-') {\n    node.warn('Strange button topic:' + msg.topic)\n    return null\n}\nvar btnNumber = Number(topic[3].charAt(0)) // topic = like 3-1/tactile\nvar page = Number(topic[3].charAt(2))\nif (page != curPage) {\n    node.warn('Strange... Page ' + page + ' in button does not match current page ' + curPage + ' in B+!')\n}\n//node.warn(\"Btn: \" + btnNumber + \" Page: \" + page)\n\nmsg.btnNumber = btnNumber\nmsg.clickAction = action\nmsg.page = curPage || 1 // do not use 'page', as it might be 0\nreturn msg\n",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 500,
+        "wires": [
+            [
+                "11f7fadc88c14014"
+            ]
+        ]
+    },
+    {
+        "id": "61df937432333438",
+        "type": "switch",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "SelectMainAction",
+        "property": "btnNumber",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "3",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "4",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "5",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "6",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "7",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "8",
+                "vt": "num"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 6,
+        "x": 830,
+        "y": 320,
+        "wires": [
+            [
+                "555427c0fbb6dd42"
+            ],
+            [
+                "555427c0fbb6dd42"
+            ],
+            [
+                "555427c0fbb6dd42"
+            ],
+            [
+                "cd8586c6c8c9da31"
+            ],
+            [
+                "cd8586c6c8c9da31"
+            ],
+            [
+                "cd8586c6c8c9da31"
+            ]
+        ]
+    },
+    {
+        "id": "555427c0fbb6dd42",
+        "type": "function",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "setTempOrMode",
+        "func": "// Definition of sleep function\n// This prevents overloading of MQTT bus\nfunction sleep(ms) {\n    return new Promise((resolve) => {\n        setTimeout(resolve, ms);\n    });\n}\nvar buttonLabels = global.get(\"buttonlabels\")\n//var curPage = global.get('curPageIndex') || 1 Curpage must be 1!\nvar bplusconfig = global.get('bplusconfig')\nvar bplusdevice = global.get('bplusdevice')\n//var pages = bplusconfig[bplusdevice].pages || ['main']\nvar displaytopic = global.get('displaytopic')\nvar buttontopic = global.get('buttontopic')\n\n// The current and target temperatures are stored and retreived from the global\n// context, as all flows (of button pplus devices) have to have\n// access to these values in all rooms. Unless you want to protect\n// the controll of one room from another.\n// Environment vars for the button+ controlled by this flow\n// are stored in the flow context. \nvar action = msg.clickAction\nmsg.action = null\nvar curTgtTemp = global.get('woonkCurTgtTemp') || 16.0\nvar curMode = global.get('woonkCurHeatingMode') || 'Force_OFF'\nvar ledRGB = 0\nnode.warn('***setTempOrMode ')\nswitch (msg.btnNumber) {\n    case 3: // Temp -0,1 degr\n        if (action === 'click') {\n            node.warn('press 3')\n            if (curTgtTemp > 16.1) {\n                curTgtTemp -= 0.1\n                msg.payload = curTgtTemp\n                //msg.newTgtTemp = curTgtTemp\n                msg.topic = displaytopic + '4/value/set'\n                node.send(msg)\n                await sleep(20)\n                global.set('woonkCurTgtTemp', curTgtTemp)\n                //node.send(msg)\n                return msg\n            } else {\n                return null\n            }\n        } else {\n            node.warn('Unknown event btn3: ' + action)\n            return null\n        }\n        break\n    case 4: // Temp +0,1 degr\n        if (action === 'click') {\n            node.warn('press 4, curTgtTemp = ' + curTgtTemp)\n            if (curTgtTemp < 22.9) {\n                curTgtTemp += 0.1\n                msg.payload = curTgtTemp\n                msg.newTgtTemp = curTgtTemp\n                msg.topic = displaytopic + '4/value/set'\n                global.set('woonkCurTgtTemp', curTgtTemp)\n                node.warn('=> New curTgtTemp = ' + curTgtTemp)\n                return msg\n            } else {\n                return null\n            }\n        } else {\n            node.warn('Unknown event btn 4: ' + action)\n            return null\n        }\n        break\n    case 5:\n        if (action === 'click') {\n            node.warn('click 5')\n            if (curMode == 'Force_OFF') {\n                curMode = 'Force_ON'\n                global.set('woonkCurHeatingMode', 'Force_ON')\n                msg.payload = 'Verw Aan'\n                ledRGB = 0xff0000\n            } else if (curMode == 'Force_ON') {\n                curMode = 'Auto'\n                msg.payload = 'Verw Auto'\n                global.set('woonkCurHeatingMode', 'Auto')\n                ledRGB = 0x00ff00\n            } else if (curMode == 'Auto') {\n                curMode = 'Force_OFF'\n                msg.payload = 'Verw Uit'\n                global.set('woonkCurHeatingMode', 'Force_OFF')\n                ledRGB = 0x0000ff\n            } else {\n                node.warn('Strange heaterMode: ' + curMode)\n                return null\n            }\n            msg.topic = buttontopic + '/5-1/label/set'\n            node.send(msg);\n            //node.warn('topic: ' + msg.topic + ', payload: ' + msg.payload)\n            await sleep(20)\n            msg.topic = buttontopic + '/5-1/led/front/rgb/set'\n            msg.payload = ledRGB\n            node.send(msg)\n            await sleep(20)\n            msg.topic = buttontopic + '/5-1/led/front/on/set'\n            msg.payload = 'true'\n            node.send(msg)\n            await sleep(20)\n        } else {\n            node.warn('Unknown event btn 5: ' + action)\n            return null\n        }\n        msg.topic = bplusdevice + '/TXHeaterMode'\n        msg.payload = curMode\n        break\n    default:\n        node.warn('Strange button number: ' + msg.btnNumber)\n        return null\n}\nreturn msg;\n",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1100,
+        "y": 280,
+        "wires": [
+            [
+                "7b8d4626425a9956",
+                "6d62376a3b96582f"
+            ]
+        ]
+    },
+    {
+        "id": "7b8d4626425a9956",
+        "type": "debug",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "buttonActionResult",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1350,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "bda2c11f55cdc105",
+        "type": "mqtt out",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "Update buttonLabels",
+        "topic": "",
+        "qos": "2",
+        "retain": "true",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "c55f79c3962bc8ce",
+        "x": 1360,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "9502191b0fb70154",
+        "type": "function",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "refreshLabels",
+        "func": "// V1.10 20241203 René Boeije Shared vars global.get/set, not flow.get/set, as a flow is not all on the same page\n//                            so we could not (no longer?) use flow.set.\n//                            Split the button handlers, as the irmware handles pageflipping and sends\n//                            a state topic holding the new pagenr and no click.\n// V1.20 20241204 René Boeije Update the 'browse' fields next to browse buttons based on pagenumber\n//                            (Could be done to add to each page, but more difficult to maintain)\n//                            Set field values to match the status of the device it controls\n// Definition of sleep function\n// This prevents overloading of MQTT bus\n// For now, this funcion is copied for every buttonplus (b+) you use.\n// *** IMPORTANT! ***\n// To indicate what b+ this function belongs to and what configuration to load, the variable \n// bplusdevice has to be set to the name of the device in the 'On Start' tab\nfunction sleep(ms) {\n    return new Promise((resolve) => {\n        setTimeout(resolve, ms);\n    });\n}\n// Code below moved to 'On Start' tab\n// node.warn('bplusdevice: ' + bplusdevice + ', buttontopic: ' + bplusconfig[bplusdevice].buttontopic)\n// if (msg.payload == 'initxx') { // move to 'setup' tab of flow\n//     // If rebooted, set these to saved config\n//     node.warn('Initialising globals')\n//     let bplusconfig = global.get('bplusconfig', 'file')\n//     global.set(\"pages\", bplusconfig.pages)               \n//     global.set(\"bplusdevice\", bplusconfig.bplusdevice)   \n//     global.set(\"initTopic\", bplusconfig.initTopic)       \n//     global.set(\"buttontopic\", bplusconfig.buttontopic)   \n//     global.set(\"displaytopic\", bplusconfig.displaytopic) \n//     // Make sure the internal pagenumber of the B+ matches the node-red pagenumber\n//     curPage = 1\n//     global.set('curPageIndex', curPage)\n//     let btnLabels = { false: 'Uit', true: 'Aan' } // maybe move to init?\n//     global.set('btnLabels', btnLabels)\n//     msg.topic = bplusconfig.initTopic + '/page/set'\n//     msg.payload = curPage \n//     node.send(msg)\n//     await sleep(20)\n//     node.warn('done...')\n// } else {\nlet pages = global.get('pages')\n\n//node.warn('pages = ' + pages)\nlet nrOfPages = pages.length - 1   // exclude 0 from v1.14 up\nif (msg.payload >= 1 && msg.payload <= nrOfPages) {\n    var curPage = msg.payload\n} else {\n    node.warn('Invalid pagenumer sent by b+: ' + msg.payload)\n    return null\n}\n//}\n// let buttonLabels = global.get(\"buttonlabels\")\n//var curPage = global.get('curPageIndex') || 1\n//let bplusconfig  = global.get('bplusconfig','file') // no longer need to load big struct\n//var pages = global.get('pages') || ['main']\nlet displaytopic = global.get('displaytopic')\nlet buttontopic = global.get('buttontopic')\nlet initTopic = global.get('initTopic')\n//let nrOfPages = pages.length - 1   // exclude 0 from v1.14 up\n\nmsg.topic = displaytopic + '5/value/set'\n//msg.payload = pages[1+( (curPage + nrOfPages - 2) % (nrOfPages))] // -1 does not work as JS does not handle it correctly\nif (curPage <= 1) // == 1 should be ok, but better safe than sorry\n    msg.payload = pages[nrOfPages]\nelse\n    msg.payload = pages[curPage - 1]\nnode.send(msg)\nawait sleep(20)\nmsg.topic = displaytopic + '6/value/set'\nmsg.payload = pages[curPage]\nnode.send(msg)\nawait sleep(20)\nmsg.topic = displaytopic + '7/value/set'\n//msg.payload = pages[1+((curPage + nrOfPages) % (nrOfPages))]\nif (curPage >= nrOfPages) // == nrOfPages should be ok, but better safe than sorry\n    msg.payload = pages[1]\nelse\n    msg.payload = pages[curPage + 1]\n\nnode.send(msg)\nawait sleep(20)\nnode.warn('buttons set')\n\n// The label for the target temperature should reflect the\n// target temp at the floor we are controlling or where this\n// button+ unit is mounted. So if we are at the ground floor\n// and the page is 'main', +/- 0.1 will change the 'woonkamer' \n// target temp. If the page is 'verdieping' (1st floor) it \n// will change the target temp for that floor and thus, the\n// display will show the target temp of the 1st floor.\nmsg.topic = displaytopic + '3/value/set'\nif (curPage == 3) { // Only exception, 1st floor\n    msg.payload = global.get('werkkCurTgtTemp')\n} else {\n    msg.payload = global.get('woonkCurTgtTemp')\n}\nnode.send(msg)\nawait sleep(20)\n// buttonLabels contain the labels for the buttonbars, not for the \n// menu buttons. The first buttonbar button is nr 3, the array starts at 1\n// So that is why the button number is i+2\n// **** As paging is now incorporated in the firmware, the code below is now obsolete ****\n/*for (var i = 0; i < buttonLabels[curPage-1].length; i++) {\n    let baseTopic = buttontopic + (i +3) + \"-\" + curPage\n    //node.warn('i = '+i + ', label = ' + buttonLabels[curPage][i].label)\n    // Send label\n    msg.payload = buttonLabels[curPage-1][i].label //msg.label;\n    if (msg.payload == \"\") { msg.payload = \" \" }\n    msg.topic = baseTopic+\"/label/set\";\n    node.send(msg);\n    await sleep(20);\n    // send toplabel\n    msg.payload = buttonLabels[curPage-1][i].topLabel\n    if (msg.payload == \"\") { msg.payload = \" \" }\n    msg.topic = baseTopic+\"/toplabel/set\";\n    node.send(msg);\n    await sleep(20);\n    // send led color\n    msg.payload = 256*256*127; // Just for now\n    msg.topic = baseTopic+\"/led/front/rgb/set\";\n    node.send(msg);\n    await sleep(20);\n}\n*/\nnode.warn('curPage = ' + curPage)\n// Some special button labels and/or colors that reflect a status\nvar ledRGB = 0\n// [\"All\", \"main\", \"licht\", \"Verdieping\", \"Media\", \"Weer\"];\nswitch (curPage) {\n    case 1: // Main\n        // Set heating mode button label\n        // Unfortunately, most of it is a duplicate of the code of\n        // 'setTempOrMode' of 'SelectMainAction', except that it\n        // does not change the status, but only changes the label\n        let woonkCurHeatingMode = global.get('woonkCurHeatingMode') || 'Forece_OFF'\n        node.warn('woonkCurHeatingMode = ' + woonkCurHeatingMode)\n        msg.topic = buttontopic + '5-1/label/set'\n        if (woonkCurHeatingMode == 'Force_OFF') {\n            msg.payload = 'Verw Uit'\n            ledRGB = 0x0000ff\n        } else if (woonkCurHeatingMode == 'Force_ON') {\n            msg.payload = 'Verw Aan'\n            ledRGB = 0xff0000\n        } else if (woonkCurHeatingMode == 'Auto') {\n            msg.payload = 'Verw Auto'\n            ledRGB = 0x00ff00\n        }\n        node.send(msg)\n        await sleep(20)\n        msg.topic = buttontopic + '5-1/led/front/rgb/set'\n        msg.payload = ledRGB\n        node.send(msg)\n        await sleep(20)\n        msg.topic = buttontopic + '5-1/led/front/on/set'\n        msg.payload = \"true\"\n        node.send(msg)\n        await sleep(20)\n        break\n    case 2: // Menu for lighting\n        // todo\n        break\n\n    case 3: // Menu for other floor\n        // For the heating status display, it is the same\n        // as for the ground floor. So the code is a duplicate\n        // except for the name of the area.\n        // Unfortunately, most of it is a duplicate of the code of \n        // 'setTempOrMode' of 'SelectFloorAction', except that it \n        // does not change the status, but only changes the label\n        let werkkCurHeatingMode = global.get('werkkCurHeatingMode') || 'Force_OFF'\n        node.warn('werkkCurHeatingMode = ' + werkkCurHeatingMode)\n        msg.topic = buttontopic + '5-3/label/set'\n        if (werkkCurHeatingMode == 'Force_OFF') {\n            msg.payload = 'Verw Uit'\n            ledRGB = 0x0000ff\n        } else if (werkkCurHeatingMode == 'Force_ON') {\n            msg.payload = 'Verw Aan'\n            ledRGB = 0xff0000\n        } else if (werkkCurHeatingMode == 'Auto') {\n            msg.payload = 'Verw Auto'\n            ledRGB = 0x00ff00\n        }\n        node.send(msg)\n        await sleep(20)\n        msg.topic = buttontopic + '5-3/led/front/rgb/set'\n        msg.payload = ledRGB\n        node.send(msg)\n        await sleep(20)\n        msg.topic = buttontopic + '5-3/led/on/set'\n        msg.payload = \"true\"\n        node.send(msg)\n        await sleep(20)\n        break\n\n    case 4: // Control media\n        break;\n    case 5: // Show weather info (No controls)\n        break;\n    default:\n        node.warn('Error: Pagenr ' + curPage + ' out of range!')\n}\nreturn msg;\n",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "\n// If rebooted, set these to saved config\nlet bplusdevice = 'woonkamer'\nnode.warn('Initialising globals in onStart')\nlet bplusconfig = global.get('bplusconfig[\"' + bplusdevice + '\"]', 'file')\nglobal.set(\"pages\", bplusconfig.pages)\nglobal.set(\"bplusdevice\", bplusconfig.bplusdevice)\nglobal.set(\"initTopic\", bplusconfig.initTopic)\nglobal.set(\"buttontopic\", bplusconfig.buttontopic)\nglobal.set(\"displaytopic\", bplusconfig.displaytopic)\n// var pages = bplusconfig.pages\n// node.warn('pages = ' + pages) //debug\n// Make sure the internal pagenumber of the B+ matches the node-red pagenumber\nvar curPage = 1\nglobal.set('curPageIndex', curPage)\nlet btnLabels = { false: 'Uit', true: 'Aan' } // maybe move to init?\nglobal.set('btnLabels', btnLabels)\nvar msg = []\nmsg.topic = bplusconfig.initTopic + '/page/set'\nmsg.payload = curPage\nnode.send(msg)\nnode.warn('done onStart...')\n",
+        "finalize": "",
+        "libs": [],
+        "x": 820,
+        "y": 180,
+        "wires": [
+            [
+                "bda2c11f55cdc105"
+            ]
+        ]
+    },
+    {
+        "id": "cd8586c6c8c9da31",
+        "type": "function",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "Verlichting BG",
+        "func": "// Bestuur verlichting woonkamer\n    var btnNumber = msg.btnNumber\n    var action = msg.clickAction\n    var buttonLabels = flow.get('buttonlabels')\n    var thisMenuButtons = buttonLabels[msg.page]\n    var bplusdevice = flow.get('bplusdevice')\n    var bplusconfig = flow.get('bplusconfig')\n    node.warn('bplusdevice: '+bplusdevice)\n    node.warn('buttonTopic: ' + bplusconfig[bplusdevice].buttontopic)\n    //node.warn(thisMenuButtons)\n    let btnLabels = global.get('btnLabels') || { false: 'Uit', true: 'Aan'}\n    var btnTopic = bplusconfig[bplusdevice].buttontopic \n    switch (btnNumber) {\n        case 6: // Toggle woonkamer\n            let wStat = global.get('woonkVerl') || false\n            if (wStat) {\n                wStat = false\n            } else {\n                wStat = true\n            }\n            msg.topic = btnTopic + btnNumber + '-' + '1/label/set' //buttonplus/develop/button/6-1/label/set\n            msg.payload = btnLabels[wStat]\n            node.send(msg)\n            global.set('woonkVerl', wStat)\n            msg.topic = 'Verlichting/woonkamer'\n            msg.payload = wStat\n            break\n        case 7: // Toggle Tafel\n            let tStat = global.get('tafelVerl') || false\n            if (tStat) {\n                tStat = false\n            } else {\n                tStat = true\n            }\n            msg.topic = btnTopic + btnNumber + '-' + '1/label/set' //buttonplus/develop/button/6-1/label/set\n            msg.payload = btnLabels[tStat]\n            node.send(msg)\n            global.set('tafelVerl', tStat)\n            msg.topic = 'Verlichting/tafel'\n            msg.payload = tStat\n            break\n        case 8: // Toggle keuken\n            let kStat = global.get('keukenVerl') || false\n            if (kStat) {\n                kStat = false\n            } else {\n                kStat = true\n            }\n            msg.topic = btnTopic + btnNumber + '-' + '1/label/set' //buttonplus/develop/button/6-1/label/set\n            msg.payload = btnLabels[kStat]\n            node.send(msg)\n            global.set('keukenVerl', kStat)\n            msg.topic = 'Verlichting/keuken'\n            msg.payload = kStat\n            break\n        default:\n            node.warn('Wrong button in lighting: '+btnNumber)\n            return null\n        \n    }\nnode.warn('Menu Verl BG. Actie: ' + action + ', button: '+thisMenuButtons[btnNumber-3]['topLabel'])\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1100,
+        "y": 360,
+        "wires": [
+            [
+                "9d33b760868b8528",
+                "4f1b0a0a9bf6be44"
+            ]
+        ]
+    },
+    {
+        "id": "6d62376a3b96582f",
+        "type": "mqtt out",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "sendHeaterMode",
+        "topic": "",
+        "qos": "2",
+        "retain": "true",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "c55f79c3962bc8ce",
+        "x": 1350,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "11f7fadc88c14014",
+        "type": "switch",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "selectPage",
+        "property": "page",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "1",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "2",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "3",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "4",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "5",
+                "vt": "num"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 5,
+        "x": 570,
+        "y": 500,
+        "wires": [
+            [
+                "61df937432333438"
+            ],
+            [
+                "975df5df44f90d1f"
+            ],
+            [
+                "30a4911e5288eb2c"
+            ],
+            [
+                "3285e75a599197bf"
+            ],
+            [
+                "337fa211ae226564"
+            ]
+        ]
+    },
+    {
+        "id": "9d33b760868b8528",
+        "type": "debug",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "Verl BG",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1320,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "975df5df44f90d1f",
+        "type": "switch",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "SelectLightAction",
+        "property": "btnNumber",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "3",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "4",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "5",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "6",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "7",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "8",
+                "vt": "num"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 6,
+        "x": 830,
+        "y": 440,
+        "wires": [
+            [
+                "3f3663dfb0c651a8"
+            ],
+            [
+                "3f3663dfb0c651a8"
+            ],
+            [
+                "3f3663dfb0c651a8"
+            ],
+            [
+                "3f3663dfb0c651a8"
+            ],
+            [
+                "3f3663dfb0c651a8"
+            ],
+            [
+                "3f3663dfb0c651a8"
+            ]
+        ]
+    },
+    {
+        "id": "30a4911e5288eb2c",
+        "type": "switch",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "SelectFloorAction",
+        "property": "btnNumber",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "3",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "4",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "5",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "6",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "7",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "8",
+                "vt": "num"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 6,
+        "x": 830,
+        "y": 560,
+        "wires": [
+            [
+                "22400e47cf00fd39"
+            ],
+            [
+                "22400e47cf00fd39"
+            ],
+            [
+                "22400e47cf00fd39"
+            ],
+            [
+                "98a03843f9af7fbe"
+            ],
+            [
+                "98a03843f9af7fbe"
+            ],
+            [
+                "98a03843f9af7fbe"
+            ]
+        ]
+    },
+    {
+        "id": "3285e75a599197bf",
+        "type": "switch",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "SelectMediaAction",
+        "property": "btnNumber",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "3",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "4",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "5",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "6",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "7",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "8",
+                "vt": "num"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 6,
+        "x": 830,
+        "y": 680,
+        "wires": [
+            [
+                "e597e6f577613dc0"
+            ],
+            [
+                "e597e6f577613dc0"
+            ],
+            [
+                "e597e6f577613dc0"
+            ],
+            [
+                "e597e6f577613dc0"
+            ],
+            [
+                "e597e6f577613dc0"
+            ],
+            [
+                "e597e6f577613dc0"
+            ]
+        ]
+    },
+    {
+        "id": "3f3663dfb0c651a8",
+        "type": "debug",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "Verlichting",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1330,
+        "y": 440,
+        "wires": []
+    },
+    {
+        "id": "98a03843f9af7fbe",
+        "type": "debug",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "verdieping",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1330,
+        "y": 580,
+        "wires": []
+    },
+    {
+        "id": "e597e6f577613dc0",
+        "type": "debug",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "Media",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1310,
+        "y": 660,
+        "wires": []
+    },
+    {
+        "id": "4f1b0a0a9bf6be44",
+        "type": "mqtt out",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "sendLightStat",
+        "topic": "",
+        "qos": "2",
+        "retain": "true",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "c55f79c3962bc8ce",
+        "x": 1340,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "22400e47cf00fd39",
+        "type": "function",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "setTempOrMode",
+        "func": "// Definition of sleep function\n// This prevents overloading of MQTT bus\nfunction sleep(ms) {\n    return new Promise((resolve) => {\n        setTimeout(resolve, ms);\n    });\n}\nvar buttonLabels = flow.get(\"buttonlabels\")\n//var curPage = flow.get('curPageIndex') || 3\nvar bplusconfig = flow.get('bplusconfig')\nvar bplusdevice = flow.get('bplusdevice')\n//var pages = bplusconfig[bplusdevice].pages || ['Verdieping']\nvar displaytopic = bplusconfig[bplusdevice].displaytopic\nvar buttontopic = bplusconfig[bplusdevice].buttontopic\n\n// The current and target temperatures are stored and retreived from the global\n// context, as all flows (of button pplus devices) have to have\n// access to these values in all rooms. Unless you want to protect\n// the controll of one room from another.\n// Environment vars for the button+ controlled by this flow\n// are stored in the flow context. \nvar action = msg.clickAction\nmsg.action = null\nvar curTgtTemp = global.get('werkkCurTgtTemp') || 16.0\nvar curMode = global.get('werkkCurHeatingMode') || 'Force_OFF'\nvar ledRGB = 0\nnode.warn('Verdieping msg.btnNumber = ' + msg.btnNumber + ' action = '+ action)\nswitch (msg.btnNumber) {\n    case 3: // Temp -0,1 degr\n        if (action === 'click') {\n            //node.warn('press 3')\n            if (curTgtTemp > 16.1) {\n                curTgtTemp -= 0.1\n                msg.payload = curTgtTemp\n                //msg.newTgtTemp = curTgtTemp\n                msg.topic = displaytopic + '/9/value/set'\n                node.send(msg)\n                await sleep(20)\n                global.set('werkkCurTgtTemp', curTgtTemp)\n                // Sync the other B+ device\n                // Note that we do not know on what page\n                // the other device is, we assume 'main'\n                // So the tgt temp on display might represent\n                // the wrong tgt temp, but that will be corrected as soon\n                // as any button is pressed on that B+\n                // (Note that we do not do that if we are in main, as the \n                // other B+ is most likely on 'main' and it is that B+\n                // 'page 2'. Not perfect, but acceptable)\n                //**msg.topic = 'buttonplus/woonkamer/display/9/value/set'\n                return msg\n            } else {\n                return null\n            }\n        } else {\n            node.warn('Unknown event btn3: ' + action)\n            return null\n        }\n        break\n    case 4: // Temp +0,1 degr\n        if (action === 'click') {\n            //node.warn('press 4')\n            if (curTgtTemp < 22.9) {\n                curTgtTemp += 0.1\n                msg.payload = curTgtTemp\n                msg.newTgtTemp = curTgtTemp\n                msg.topic = displaytopic + '/9/value/set'\n                global.set('werkkCurTgtTemp', curTgtTemp)\n                //**msg.topic = 'buttonplus/woonkamer/display/9/value/set'\n                return msg\n            } else {\n                return null\n            }\n        } else {\n            node.warn('Unknown event btn 4: ' + action)\n            return null\n        }\n        break\n    case 5:\n        if (action === 'click') {\n            //node.warn('click 5')\n            if (curMode == 'Force_OFF') {\n                curMode = 'Force_ON'\n                global.set('werkkCurHeatingMode', 'Force_ON')\n                msg.payload = 'Verw Aan'\n                ledRGB = 0xff0000\n            } else if (curMode == 'Force_ON') {\n                curMode = 'Auto'\n                msg.payload = 'Verw Auto'\n                global.set('werkkCurHeatingMode', 'Auto')\n                ledRGB = 0x00ff00\n            } else if (curMode == 'Auto') {\n                curMode = 'Force_OFF'\n                msg.payload = 'Verw Uit'\n                global.set('werkkCurHeatingMode', 'Force_OFF')\n                ledRGB = 0x0000ff\n            } else {\n                node.warn('Strange heaterMode: ' + curMode)\n                return null\n            }\n            msg.topic = buttontopic + '/5-3/label/set'\n            node.send(msg);\n\n            await sleep(20)\n            msg.topic = buttontopic + '/5-3/led/front/rgb/set'\n            msg.payload = ledRGB\n            node.send(msg)\n            await sleep(20)\n        } else {\n            node.warn('Unknown event btn 5: ' + action)\n            return null\n        }\n        msg.topic = 'werkkamer/TXHeaterMode'\n        msg.payload = curMode\n        break\n    default:\n        node.warn('Strange button number: ' + msg.btnNumber)\n        return null\n}\nreturn msg;\n",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1100,
+        "y": 520,
+        "wires": [
+            [
+                "1264ad26f01ce737",
+                "411eb744ff0ca7f2"
+            ]
+        ]
+    },
+    {
+        "id": "1264ad26f01ce737",
+        "type": "debug",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "buttonActionResult",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1350,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "411eb744ff0ca7f2",
+        "type": "mqtt out",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "sendHeaterMode",
+        "topic": "",
+        "qos": "2",
+        "retain": "true",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "c55f79c3962bc8ce",
+        "x": 1350,
+        "y": 520,
+        "wires": []
+    },
+    {
+        "id": "337fa211ae226564",
+        "type": "switch",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "SelectWeatherInfo",
+        "property": "btnNumber",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "3",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "4",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "5",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "6",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "7",
+                "vt": "num"
+            },
+            {
+                "t": "eq",
+                "v": "8",
+                "vt": "num"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 6,
+        "x": 830,
+        "y": 800,
+        "wires": [
+            [],
+            [],
+            [],
+            [],
+            [],
+            []
+        ]
+    },
+    {
+        "id": "ef6e922895a8cdac",
+        "type": "mqtt in",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "",
+        "topic": "buttonplus/woonkamer/page/state",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "c55f79c3962bc8ce",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 170,
+        "y": 180,
+        "wires": [
+            [
+                "9502191b0fb70154"
+            ]
+        ]
+    },
+    {
+        "id": "9bdca0b411e3169f",
+        "type": "comment",
+        "z": "19a3dcc1fb0df1c7",
+        "name": "Read this first!",
+        "info": "After importing this flow, follow the instructions in the function below.\nDeploy the flow and inject the timestamp (only) once.\nThe configuration will be uploaded to the selected buttonplus.\n\nAfter that, you have to force a new deploy,\nas the 'refreshlabels' function has failed\nbecause the variables were not yet set by\n'Set Initial Config'. \nAs nothing has changed, a redeploy is not possible,\nbut if you move an item a bit, you will be \nable to redeploy. At that moment the global\nvariables are set and 'refreshlables' will succeed.\n",
+        "x": 270,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "c55f79c3962bc8ce",
+        "type": "mqtt-broker",
+        "name": "ReneSilvia",
+        "broker": "192.168.0.33",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    }
+]
